@@ -1,0 +1,9 @@
+假定softmax 输入为(n, dim) dim的大小会对带宽产生非常大的影响，没有一种 通用 的优化方法可以实现在所有 dim的情况下都是传输最优的
+
+softmax的写法依赖于dim大小,根据dim不同可以分为下面三种情况:
+(1) 一个 Warp 处理一行的计算，适用于 num_cols <= 1024 情况
+硬件上并行执行的32个线程称之为一个warp，同一个warp的32个thread执行同一条指令。 warp是GPU调度执行的基本单元
+
+(2) 一个 Block 处理一行的计算，借助 Shared Memory 保存中间结果数据，适用于需要的 Shared Memory 资源满足 Kernel Launch 的可启动条件的情况，在本测试环境中是 1024 < num_cols <= 4096
+
+(3) 一个 Block 处理一行的计算，不使用 Shared Memory，重复读输入 x，适用于不支持(1)、(2)的情况
