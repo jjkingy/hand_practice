@@ -1,0 +1,4 @@
+# ninja log v5
+0	54236	1760157583198233829	/home/yy/Code/hand_practice/cuda_practice/pytorch/setup/build/temp.linux-x86_64-cpython-37/element_wise/vector_sub.o	85cd0054c12c3b29
+0	54415	1760157583374232177	/home/yy/Code/hand_practice/cuda_practice/pytorch/setup/build/temp.linux-x86_64-cpython-37/main.o	1d16e7283ed82741
+0	56253	1760157585218214880	/home/yy/Code/hand_practice/cuda_practice/pytorch/setup/build/temp.linux-x86_64-cpython-37/element_wise/vector_add.o	28982d1fda9dc51d
