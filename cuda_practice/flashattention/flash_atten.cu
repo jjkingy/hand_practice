@@ -129,7 +129,7 @@ __global__ void flash_attention_v2_kernel(FP *Q, FP *K, FP *V, FP *O,
 
 
 
-  //load Q, O toshared memory
+  //load Q, O to shared memory
   for(int i = 0; i < groupTx; ++i) {
     sQ[ty][i * Bc + tx] = Q[row * dim + i * Bc + tx];
     sO[ty][i * Bc + tx] = 0;
@@ -187,7 +187,7 @@ __global__ void flash_attention_v2_kernel(FP *Q, FP *K, FP *V, FP *O,
     // QK[Br, Bc] @ V[Bc, d] = O[Br, d]
     // tx in [0, Bc], ty in [0, Br]
     // slice-Bc and each O[ty, group.x] as accumulator
-    for(int i = 0; i < groupTx; ++i) {
+    for(int i = 0; i < groupTx; ++i) {  //这里的rescaleE是给分子乘的
       sO[ty][i * Bc + tx] = sO[ty][i * Bc + tx] * rescaleE;
       for(int k = 0; k < Bc; ++k) {
         sO[ty][i * Bc + tx] += sSafeE[ty][k] * sV[k][i * Bc + tx];
@@ -198,6 +198,7 @@ __global__ void flash_attention_v2_kernel(FP *Q, FP *K, FP *V, FP *O,
   //rescale O in the end
   for(int i = 0; i < groupTx; ++i) {
     //compute Oi and write to global
+    //只在最后做一次rescale 避免中间softmax重复做scale/rescale
     O[row * dim + i * Bc + tx] = sO[ty][i * Bc + tx] / sDenom[ty];
   }
 
