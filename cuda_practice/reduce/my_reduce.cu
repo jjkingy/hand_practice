@@ -5,7 +5,7 @@
 #include <vector>
 
 const int BLOCK_SIZE = 1024;
-#define FULL_MASK 0xffffffff
+#define FULL_MASK 0xFFFFFFFF
 
 /* 你的 reduce0 kernel 保持不变 */
 __global__ void reduce0(float* __restrict__ d_in,
@@ -84,7 +84,7 @@ __global__ void reduce3(float* __restrict__ d_in,
                         float* __restrict__ d_out,
                         unsigned int N) {
     __shared__ float smem[BLOCK_SIZE];
-    //相当于一个block处理原来两个block的数据
+    //相当于一个block处理原来两个block的数据 idx依旧是当前处理到的数据的序号
     int i = blockIdx.x * (blockDim.x * 2) + threadIdx.x;
     int tid = threadIdx.x;
     float val = 0.0f;
@@ -278,6 +278,7 @@ int main(int argc, char** argv)
     cudaEventCreate(&stop);
 
     /* warm-up */
+    //访问vector的数据使用.data()接口 直接访问底层数据指针
     reduce_gpu(h_data.data(), N, kernel_id);
 
     cudaEventRecord(start);

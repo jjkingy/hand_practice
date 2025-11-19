@@ -30,72 +30,67 @@ void checkCublasError(cublasStatus_t status, const char *msg) {
 
 //tile + shared 一个thead计算一个tile
 //一个线程计算一个tile 提高指令并行度，减少对shared memeory的频繁读写
-//
+//主要变化在于一个线程负责一个数据计算变成一个线程负责一个tile(TM x TN)
 template <const int BM, const int BN, const int BK, const int TM, const int TN>
 __global__ void mysgemm_v3(int M, int N, int K, float alpha, float *A, float *B,
                            float beta, float *C) {
-  int bx = blockIdx.x;
-  int by = blockIdx.y;
-
-  //一个thread计算一个tile
-  //计算一个block需要的线程数量 block指的是BM*BN块
-  int block_row_thread = BN / TN; //每行有多少列
-  int block_col_thread = BM / TM; //每列有多少行
-  int thread_num = block_row_thread * block_col_thread;
   
-  //tile在block中的二维坐标
-  int tx = (threadIdx.x % block_row_thread) * TN;
-  int ty = (threadIdx.x / block_row_thread) * TM;
-                   
+  int by = blockIdx.y;
+  int bx = blockIdx.x;
+
+  int thread_per_row = BN / TN;
+  int thread_per_col = BM / TM;
+  int thread_num = thread_per_col * thread_per_row;
+
   __shared__ float As[BM * BK];
   __shared__ float Bs[BK * BN];
 
-  //定位到A B C 矩阵的起始位置
   A = &A[by * BM * K];
   B = &B[bx * BN];
   C = &C[by * BM * N + bx * BN];
-  
-  //thread_num个线程搬运数据到共享内存
+
+  //计算shared memory中的二维索引
+  int tx = (threadIdx.x % thread_per_row) * TN;
+  int ty = (threadIdx.x / thread_per_row) * TM;
+
   int a_tile_row = threadIdx.x / BK;
   int a_tile_col = threadIdx.x % BK;
-  int a_tile_stride = thread_num / BK;
+  int a_tile_stride = thread_num / BK;  //这是一个block一次能搬多少行
 
   int b_tile_row = threadIdx.x / BN;
   int b_tile_col = threadIdx.x % BN;
   int b_tile_stride = thread_num / BN;
 
-  //TMxTN小块
-  float tmp[TM][TN] = {0.};
-#pragma unroll
+  float tmp[TM][TN] = {0.f};
   for(int k = 0; k < K; k += BK) {
-#pragma unroll
+    float sum = 0.f;
+    //分别加载A B矩阵数据到共享内存
     for(int i = 0; i < BM; i += a_tile_stride) {
-      As[(a_tile_row + i) * BK + a_tile_col] = A[(a_tile_row + i) * K + a_tile_col];
+      As[(i + a_tile_row) * BK + a_tile_col] = A[(i + a_tile_row) * K + a_tile_col];
     }
-#pragma unroll
     for(int i = 0; i < BK; i += b_tile_stride) {
-      Bs[(b_tile_row + i) * BN + b_tile_col] = B[(b_tile_row + i) * N + b_tile_col];
+      Bs[(i + b_tile_row) * BN + b_tile_col] = B[(i + b_tile_row) * N + b_tile_col];
     }
+
     __syncthreads();
+
     A += BK;
     B += BK * N;
-
-#pragma unroll
     for(int i = 0; i < BK; ++i) {
-#pragma unroll
-      for(int j = 0; j < TM; j++) {
-        for(int l = 0; l < TN; l++) {
-          tmp[j][l] += As[(ty + j) * BK + l] * Bs[i * BN + tx + l];
+      for(int m = 0; m < TM; ++m) {
+        for(int n = 0; n < TN; ++n) {
+          tmp[m][n] += As[(ty + m) * BK + i] * Bs[i * BN + tx + n];
         }
       }
     }
     __syncthreads();
   }
-#pragma unroll
-  for(int j = 0; j < TM; j++) {
-    for(int l = 0; l < TN; l++) {
-      C[(ty + j) * N + tx + l] =
-        alpha * tmp[j][l] + beta * C[(ty + j) * N + tx + l];
+
+  //每个线程把自己的结果存进去
+  for(int m = 0; m < TM; ++m) {
+    for(int n = 0; n < TN; ++n) {
+      C[(ty + m) * N + tx + n] =
+        alpha * tmp[m][n] + beta * C[(ty + m) * BN + tx + n];
     }
   }
 }
@@ -109,7 +104,7 @@ int main() {
   std::vector<int> sizes = generateSizes();
 
   // 打开CSV文件
-  std::ofstream csv_file("sgemm_benchmark_v3_k8.csv");
+  std::ofstream csv_file("sgemm_benchmark_v3_10_20.csv");
   csv_file << "Size,CUBLAS_GFLOPS,MySGEMM_FLOPS,Matched" << std::endl;
 
   for (int N : sizes) {
@@ -262,7 +257,7 @@ int main() {
 
   csv_file.close();
 
-  std::cout << "Benchmark completed. Results saved to 'sgemm_benchmark_v3.csv'"
+  std::cout << "Benchmark completed. Results saved to 'sgemm_benchmark_v3_10_20.csv'"
             << std::endl;
   return 0;
 }
